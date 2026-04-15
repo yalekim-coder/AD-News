@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antidumping News Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f1117;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a1d2e 0%, #16213e 100%);
+            padding: 24px 40px;
+            border-bottom: 1px solid #2a2d3e;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header h1 { font-size: 1.6rem; font-weight: 700; color: #fff; }
+        .header h1 span { color: #4f8ef7; }
+
+        .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+
+        .refresh-btn {
+            display: flex; align-items: center; gap: 8px;
+            background: #4f8ef7; color: white; border: none;
+            padding: 10px 22px; border-radius: 8px; cursor: pointer;
+            font-size: 0.9rem; font-weight: 600; transition: all 0.2s;
+        }
+        .refresh-btn:hover { background: #3a7be8; transform: translateY(-1px); }
+        .refresh-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        .spinning { animation: spin 0.8s linear infinite; display: inline-block; }
+
+        .last-updated { font-size: 0.75rem; color: #666; }
+
+        .container { max-width: 1500px; margin: 0 auto; padding: 28px 40px; }
+
+        /* Stats */
+        .stats-bar { display: flex; gap: 14px; margin-bottom: 26px; }
+        .stat-card {
+            background: #1a1d2e; border: 1px solid #2a2d3e;
+            border-radius: 10px; padding: 16px 22px; flex: 1; text-align: center;
+        }
+        .stat-card .num { font-size: 1.9rem; font-weight: 700; color: #4f8ef7; }
+        .stat-card .lbl { font-size: 0.75rem; color: #666; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.6px; }
+        .stat-card.us .num { color: #81c784; }
+        .stat-card.eu .num { color: #4fc3f7; }
+        .stat-card.ct  .num { color: #ffb74d; }
+
+        /* Filters */
+        .filters {
+            background: #1a1d2e; border: 1px solid #2a2d3e;
+            border-radius: 12px; padding: 20px 26px; margin-bottom: 22px;
+        }
+        .filters-title { font-size: 0.78rem; color: #666; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px; }
+        .filters-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+        .fg { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 150px; }
+        .fg label { font-size: 0.78rem; color: #888; font-weight: 500; }
+        .fg input, .fg select {
+            background: #0f1117; border: 1px solid #2a2d3e; color: #e0e0e0;
+            padding: 8px 12px; border-radius: 7px; font-size: 0.86rem; outline: none;
+            transition: border-color 0.2s;
+        }
+        .fg input:focus, .fg select:focus { border-color: #4f8ef7; }
+        .fg select option { background: #1a1d2e; }
+        .fg input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
+
+        .filter-btns { display: flex; gap: 8px; align-items: flex-end; }
+        .btn-apply {
+            background: #4f8ef7; color: white; border: none;
+            padding: 8px 20px; border-radius: 7px; cursor: pointer;
+            font-size: 0.86rem; font-weight: 600; transition: background 0.2s;
+        }
+        .btn-apply:hover { background: #3a7be8; }
+        .btn-clear {
+            background: transparent; color: #777; border: 1px solid #2a2d3e;
+            padding: 8px 16px; border-radius: 7px; cursor: pointer;
+            font-size: 0.86rem; transition: all 0.2s;
+        }
+        .btn-clear:hover { border-color: #555; color: #bbb; }
+        .btn-initiate {
+            background: #2a1a3e; color: #ce93d8; border: 1px solid #6a3d9a;
+            padding: 8px 16px; border-radius: 7px; cursor: pointer;
+            font-size: 0.86rem; font-weight: 600; transition: all 0.2s;
+        }
+        .btn-initiate:hover { background: #3d1f5e; border-color: #9c5fd6; color: #e1bee7; }
+        .btn-initiate.active { background: #6a3d9a; color: #fff; border-color: #9c5fd6; }
+
+        .results-info { font-size: 0.8rem; color: #666; margin-bottom: 12px; }
+        .results-info b { color: #4f8ef7; }
+
+        /* Table */
+        .table-wrap {
+            background: #1a1d2e; border: 1px solid #2a2d3e;
+            border-radius: 12px; overflow: hidden;
+        }
+
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
+        /* 컬럼 너비 */
+        col.c-date    { width: 110px; }
+        col.c-region  { width: 70px; }
+        col.c-country { width: 220px; }
+        col.c-update  { width: auto; }
+        col.c-link    { width: 80px; }
+
+        thead { background: #141728; }
+        thead th {
+            padding: 13px 16px; text-align: left;
+            font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.7px; color: #666; border-bottom: 1px solid #2a2d3e;
+            cursor: pointer; user-select: none; white-space: nowrap;
+        }
+        thead th:hover { color: #aaa; }
+        thead th.asc::after  { content: ' ↑'; color: #4f8ef7; }
+        thead th.desc::after { content: ' ↓'; color: #4f8ef7; }
+
+        tbody tr { border-bottom: 1px solid #1a1d2e; transition: background 0.12s; }
+        tbody tr:nth-child(even) { background: #161926; }
+        tbody tr:hover { background: #1e2240 !important; }
+        tbody tr:last-child { border-bottom: none; }
+
+        tbody td { padding: 13px 16px; font-size: 0.86rem; vertical-align: top; }
+
+        /* Date */
+        .td-date { color: #999; font-size: 0.82rem; white-space: nowrap; }
+
+        /* Region badge */
+        .badge {
+            display: inline-block; padding: 2px 9px; border-radius: 10px;
+            font-size: 0.72rem; font-weight: 700; white-space: nowrap;
+        }
+        .badge-us { background: #1a3a1a; color: #81c784; border: 1px solid #2a5a2a; }
+        .badge-eu { background: #0d2545; color: #4fc3f7; border: 1px solid #1a4070; }
+
+        /* Country tags */
+        .country-wrap { display: flex; flex-wrap: wrap; gap: 4px; }
+        .ctag {
+            display: inline-block; background: #1f2235; color: #bbb;
+            border: 1px solid #2a2d3e; padding: 2px 7px;
+            border-radius: 4px; font-size: 0.72rem; white-space: normal; word-break: break-word;
+        }
+        .ctag-us { background: #1a2e1a; color: #81c784; border-color: #2a4a2a; }
+
+        /* Update text */
+        .td-update {
+            line-height: 1.6; color: #ccc;
+            overflow: hidden;
+        }
+        .update-text { }
+
+
+        /* Link */
+        .td-link { text-align: center; }
+        .td-link a {
+            color: #4f8ef7; text-decoration: none;
+            font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px;
+        }
+        .td-link a:hover { color: #81b4ff; }
+
+        /* No data */
+        .no-data { text-align: center; padding: 60px; color: #444; }
+        .no-data .ico { font-size: 2.2rem; margin-bottom: 10px; }
+        .no-data p { font-size: 0.88rem; }
+
+        /* Error */
+        .err-box {
+            background: #2a1515; border: 1px solid #5a2020; color: #f48771;
+            padding: 14px 20px; border-radius: 9px; margin-bottom: 18px;
+            font-size: 0.86rem; display: none;
+        }
+
+        /* Skeleton */
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .sk {
+            background: linear-gradient(90deg,#1f2235 25%,#252840 50%,#1f2235 75%);
+            background-size: 200% 100%; animation: shimmer 1.4s infinite;
+            border-radius: 4px; height: 13px; display: inline-block;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex; justify-content: center; align-items: center;
+            gap: 6px; padding: 18px; border-top: 1px solid #2a2d3e; flex-wrap: wrap;
+        }
+        .pg {
+            background: transparent; border: 1px solid #2a2d3e; color: #777;
+            padding: 5px 11px; border-radius: 5px; cursor: pointer;
+            font-size: 0.82rem; transition: all 0.15s;
+        }
+        .pg:hover, .pg.on { background: #4f8ef7; border-color: #4f8ef7; color: white; }
+        .pg:disabled { opacity: 0.25; cursor: not-allowed; }
+        .pg-info { color: #555; font-size: 0.77rem; margin-left: 6px; }
+
+        @media(max-width:768px){
+            .container{ padding:16px; }
+            .header{ padding:16px; flex-direction:column; gap:12px; align-items:flex-start; }
+            .stats-bar{ flex-wrap:wrap; }
+            col.c-country{ width:120px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>⚖️ Antidumping <span>News Dashboard</span></h1>
+    <div class="header-right">
+        <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">
+            <span id="ico">↻</span> Refresh Data
+        </button>
+        <span class="last-updated" id="lastUpdated">Not loaded yet</span>
+    </div>
+</div>
+
+<div class="container">
+
+    <div class="stats-bar">
+        <div class="stat-card">
+            <div class="num" id="sTot">—</div>
+            <div class="lbl">Total Cases</div>
+        </div>
+        <div class="stat-card us">
+            <div class="num" id="sUS">—</div>
+            <div class="lbl">US Cases</div>
+        </div>
+        <div class="stat-card eu">
+            <div class="num" id="sEU">—</div>
+            <div class="lbl">EU Cases</div>
+        </div>
+
+    </div>
+
+    <div class="err-box" id="errBox"></div>
+
+    <div class="filters">
+        <div class="filters-title">🔍 Search & Filter</div>
+        <div class="filters-row">
+            <div class="fg" style="flex:2;min-width:200px;">
+                <label>Keyword (Update text)</label>
+                <input type="text" id="fKeyword" placeholder="e.g. GDPR, fine, penalty..." />
+            </div>
+            <div class="fg">
+                <label>Region</label>
+                <select id="fRegion">
+                    <option value="">All Regions</option>
+                    <option value="US">US</option>
+                    <option value="EU">EU</option>
+                </select>
+            </div>
+            <div class="fg">
+                <label>Country</label>
+                <select id="fCountry">
+                    <option value="">All Countries</option>
+                </select>
+            </div>
+            <div class="fg">
+                <label>Date From</label>
+                <input type="date" id="fDateFrom" />
+            </div>
+            <div class="fg">
+                <label>Date To</label>
+                <input type="date" id="fDateTo" />
+            </div>
+            <div class="filter-btns">
+                <button class="btn-apply" onclick="applyFilter()">Search</button>
+                <button class="btn-initiate" id="btnInitiate" onclick="toggleInitiate()">🆕 New Initiations</button>
+                <button class="btn-clear" onclick="clearFilter()">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="results-info" id="resInfo"></div>
+
+    <div class="table-wrap">
+        <table>
+            <colgroup>
+                <col class="c-date">
+                <col class="c-region">
+                <col class="c-country">
+                <col class="c-update">
+                <col class="c-link">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th id="th-date"   onclick="doSort('date')">Date</th>
+                    <th id="th-region" onclick="doSort('region')">Region</th>
+                    <th id="th-country">Country</th>
+                    <th id="th-update">Update</th>
+                    <th id="th-link" style="text-align:center;cursor:default">Link</th>
+                </tr>
+            </thead>
+            <tbody id="tbody">
+                <tr><td colspan="5" class="no-data">
+                    <div class="ico">📋</div>
+                    <p>Click <strong>Refresh Data</strong> to load</p>
+                </td></tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="pag" style="display:none"></div>
+    </div>
+
+</div>
+
+<script>
+// ══════════════════════════════════════
+//  CONFIG
+// ══════════════════════════════════════
+const API = 'https://script.google.com/macros/s/AKfycbz3breBt4I7p5Uyeuzv75QP-ayE2PXY2_cTsUBkPfuoV4fIEhYaUsmlg6pR0CBW-mvZ/exec';
+const PG  = 25;   // 페이지당 rows
+
+let allData      = [];
+let filtered     = [];
+let page         = 1;
+let sKey         = 'date';
+let sDir         = 'desc';
+
+// ══════════════════════════════════════
+//  JSONP
+// ══════════════════════════════════════
+function jsonp(sheet) {
+    return new Promise((res, rej) => {
+        const cb = '_cb_' + sheet.replace(/\W/g,'') + '_' + Date.now();
+        const t  = setTimeout(() => { cleanup(); rej(new Error('Timeout: ' + sheet)); }, 20000);
+
+        window[cb] = data => { cleanup(); res(data); };
+
+        function cleanup() {
+            clearTimeout(t);
+            delete window[cb];
+            const s = document.getElementById(cb);
+            if (s) s.remove();
+        }
+
+        const sc = document.createElement('script');
+        sc.id  = cb;
+        sc.src = `${API}?sheet=${encodeURIComponent(sheet)}&callback=${cb}&t=${Date.now()}`;
+        sc.onerror = () => { cleanup(); rej(new Error('Load error: ' + sheet)); };
+        document.head.appendChild(sc);
+    });
+}
+
+// ══════════════════════════════════════
+//  날짜 파싱 / 포맷
+// ══════════════════════════════════════
+function parseDate(v) {
+    if (!v) return null;
+    const s = String(v).trim();
+    // MM/DD/YYYY
+    const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m1) return new Date(+m1[3], +m1[1]-1, +m1[2]);
+    // YYYY-MM-DD
+    const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m2) return new Date(+m2[1], +m2[2]-1, +m2[3]);
+    // "May 6, 2025" etc
+    const d = new Date(s);
+    return isNaN(d) ? null : d;
+}
+
+function fmtDate(v) {
+    const d = parseDate(v);
+    if (!d) return v || '—';
+    return d.toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'});
+}
+
+// ══════════════════════════════════════
+//  EU Countries Concerned 파싱
+//  "Countries concerned: France, Germany"
+// ══════════════════════════════════════
+function parseCountries(updateText) {
+    if (!updateText) return [];
+    // 패턴: "Countries concerned:" 또는 "Country concerned:" 뒤 같은 줄 내용만
+    // [ \t]* 로 줄바꿈 제외 → 빈 칸이면 빈 배열 반환
+    const m = updateText.match(/countr(?:y|ies)[ \t]+concerned[ \t]*:[ \t]*([^\n\r]*)/i);
+    if (!m) return [];
+    const val = m[1].trim();
+    if (!val) return [];
+    return val
+        .split(/[,;]/)
+        .map(c => c.trim())
+        .filter(c => c.length > 0 && c.length < 60);
+}
+
+// Update 텍스트에서 Countries concerned 줄 분리
+function splitUpdateText(text) {
+    if (!text) return { main: '', cc: '' };
+    const m = text.match(/(countr(?:y|ies)\s+concerned\s*:[^\n\r]+)/i);
+    if (!m) return { main: text.trim(), cc: '' };
+    const cc   = m[1].trim();
+    const main = text.replace(m[1], '').replace(/\n{2,}/g,'\n').trim();
+    return { main, cc };
+}
+
+// ══════════════════════════════════════
+//  데이터 로드
+// ══════════════════════════════════════
+async function loadAll() {
+    const btn = document.getElementById('refreshBtn');
+    const ico = document.getElementById('ico');
+    btn.disabled = true;
+    ico.classList.add('spinning');
+    document.getElementById('errBox').style.display = 'none';
+    allData = [];
+    skeleton();
+
+    try {
+        const [usRes, euRes] = await Promise.allSettled([
+            jsonp('US_News'),
+            jsonp('EU')
+        ]);
+
+        // ── US_News 처리 ──────────────────────────
+        // 헤더: Update, Link, Date, Country
+        if (usRes.status === 'fulfilled') {
+            const { rows } = usRes.value;
+            rows.forEach(r => {
+                if (!r) return;
+                allData.push({
+                    region   : 'US',
+                    date     : r['Date']    || r['date']    || '',
+                    update   : r['Update']  || r['update']  || '',
+                    link     : r['Link']    || r['link']    || '',
+                    // US 시트에 Country 컬럼이 있으면 사용, 없으면 "United States"
+                    countries: parseUSCountry(r['Country'] || r['country'] || ''),
+                });
+            });
+        } else {
+            console.warn('US_News failed:', usRes.reason);
+        }
+
+        // ── EU 처리 ───────────────────────────────
+        // 헤더: ID, Title, Update, Link, Date, Data Updated
+        // Countries → Update 텍스트에서 파싱
+        if (euRes.status === 'fulfilled') {
+            const { rows } = euRes.value;
+            rows.forEach(r => {
+                if (!r) return;
+                const updateText = r['Update'] || r['update'] || '';
+                const countries  = parseCountries(updateText);
+                allData.push({
+                    region   : 'EU',
+                    date     : r['Date']   || r['date']   || '',
+                    update   : updateText,
+                    link     : r['Link']   || r['link']   || '',
+                    countries: countries.length > 0 ? countries : ['EU'],
+                });
+            });
+        } else {
+            console.warn('EU failed:', euRes.reason);
+        }
+
+        if (allData.length === 0) throw new Error('No data received from both sheets.');
+
+        // 기본 날짜 내림차순
+        allData.sort((a,b) => {
+            const da = parseDate(a.date), db = parseDate(b.date);
+            if (!da && !db) return 0;
+            if (!da) return 1; if (!db) return -1;
+            return db - da;
+        });
+
+        filtered = [...allData];
+        buildCountryDropdown();
+        renderStats(allData);
+        applyFilter();
+
+        document.getElementById('lastUpdated').textContent =
+            'Last updated: ' + new Date().toLocaleTimeString('en-US');
+
+    } catch(e) {
+        showErr(e.message);
+        noData('Failed to load. Check console for details.');
+    }
+
+    btn.disabled = false;
+    ico.classList.remove('spinning');
+}
+
+// US Country 파싱 — 콤마 구분 가능성 대비
+function parseUSCountry(val) {
+    if (!val || val.trim() === '') return ['United States'];
+    return val.split(/[,;]/).map(c=>c.trim()).filter(Boolean);
+}
+
+// ══════════════════════════════════════
+//  Country 드롭다운
+// ══════════════════════════════════════
+function buildCountryDropdown() {
+    const sel = document.getElementById('fCountry');
+    const set = new Set();
+    allData.forEach(r => r.countries.forEach(c => set.add(c.trim())));
+    const sorted = [...set].filter(Boolean).sort();
+    sel.innerHTML = '<option value="">All Countries</option>' +
+        sorted.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+}
+
+// ══════════════════════════════════════
+//  Stats
+// ══════════════════════════════════════
+function renderStats(data) {
+    document.getElementById('sTot').textContent = data.length;
+    document.getElementById('sUS').textContent  = data.filter(r=>r.region==='US').length;
+    document.getElementById('sEU').textContent  = data.filter(r=>r.region==='EU').length;
+}
+
+// ══════════════════════════════════════
+//  Filter
+// ══════════════════════════════════════
+let initiateOnly = false;
+
+function toggleInitiate() {
+    initiateOnly = !initiateOnly;
+    const btn = document.getElementById('btnInitiate');
+    btn.classList.toggle('active', initiateOnly);
+    applyFilter();
+}
+
+function applyFilter() {
+    const kw      = document.getElementById('fKeyword').value.trim().toLowerCase();
+    const region  = document.getElementById('fRegion').value;
+    const country = document.getElementById('fCountry').value.toLowerCase();
+    const from    = document.getElementById('fDateFrom').value;
+    const to      = document.getElementById('fDateTo').value;
+
+    filtered = allData.filter(r => {
+        if (kw && !r.update.toLowerCase().includes(kw)) return false;
+        if (region && r.region !== region) return false;
+        if (country && !r.countries.some(c => c.toLowerCase() === country)) return false;
+        const d = parseDate(r.date);
+        if (from && d && d < new Date(from)) return false;
+        if (to   && d && d > new Date(to + 'T23:59:59')) return false;
+        if (initiateOnly && !r.update.toLowerCase().includes('initiat')) return false;
+        return true;
+    });
+
+    doSort(sKey, true);   // 현재 정렬 유지
+    page = 1;
+    renderStats(filtered);
+    render();
+
+    const total = allData.length, f = filtered.length;
+    document.getElementById('resInfo').innerHTML =
+        f === total
+            ? `Showing all <b>${total}</b> cases`
+            : `Showing <b>${f}</b> of ${total} cases`;
+}
+
+function clearFilter() {
+    ['fKeyword','fRegion','fCountry','fDateFrom','fDateTo']
+        .forEach(id => { document.getElementById(id).value = ''; });
+    initiateOnly = false;
+    document.getElementById('btnInitiate').classList.remove('active');
+    applyFilter();
+}
+
+// ══════════════════════════════════════
+//  Sort
+// ══════════════════════════════════════
+function doSort(key, keepDir=false) {
+    if (!keepDir) {
+        if (sKey === key) sDir = sDir === 'asc' ? 'desc' : 'asc';
+        else { sKey = key; sDir = 'desc'; }
+    }
+    // 헤더 표시
+    ['date','region','country','update','link'].forEach(k => {
+        const th = document.getElementById('th-'+k);
+        if (!th) return;
+        th.classList.remove('asc','desc');
+        if (k === sKey) th.classList.add(sDir);
+    });
+    filtered.sort((a,b) => {
+        if (sKey === 'date') {
+            const da = parseDate(a.date)||new Date(0);
+            const db = parseDate(b.date)||new Date(0);
+            return sDir==='asc' ? da-db : db-da;
+        }
+        const va = (a[sKey]||'').toLowerCase();
+        const vb = (b[sKey]||'').toLowerCase();
+        return sDir==='asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    if (!keepDir) { page=1; render(); }
+}
+
+// ══════════════════════════════════════
+//  Render Table
+// ══════════════════════════════════════
+function render() {
+    const tbody = document.getElementById('tbody');
+    if (!filtered.length) { noData(); renderPag(); return; }
+
+    const start = (page-1)*PG;
+    const slice = filtered.slice(start, start+PG);
+
+    tbody.innerHTML = slice.map(r => {
+        // Region badge
+        const badge = r.region === 'US'
+            ? `<span class="badge badge-us">US</span>`
+            : `<span class="badge badge-eu">EU</span>`;
+
+        // Country tags
+        const ctagClass = r.region === 'US' ? 'ctag ctag-us' : 'ctag';
+        const ctags = r.countries.map(c =>
+            `<span class="${ctagClass}">${esc(c)}</span>`
+        ).join('');
+
+        // Update text — 원본 텍스트 그대로 표시
+        let updateHtml;
+        updateHtml = esc(r.update).replace(/\n/g,'<br>');
+
+        // Link
+        const linkHtml = r.link
+            ? `<a href="${esc(r.link)}" target="_blank" rel="noopener" title="${esc(r.link)}">🔗</a>`
+            : `<span style="color:#333">—</span>`;
+
+        return `<tr>
+            <td class="td-date">${fmtDate(r.date)}</td>
+            <td>${badge}</td>
+            <td><div class="country-wrap">${ctags}</div></td>
+            <td class="td-update"><div class="update-text">${updateHtml}</div></td>
+            <td class="td-link">${linkHtml}</td>
+        </tr>`;
+    }).join('');
+
+    renderPag();
+}
+
+// ══════════════════════════════════════
+//  Pagination
+// ══════════════════════════════════════
+function renderPag() {
+    const total = Math.ceil(filtered.length / PG);
+    const pag   = document.getElementById('pag');
+    if (total <= 1) { pag.style.display='none'; return; }
+    pag.style.display = 'flex';
+
+    const s = Math.max(1, Math.min(page-2, total-4));
+    const e = Math.min(total, s+4);
+
+    let h = `<button class="pg" onclick="goPage(${page-1})" ${page===1?'disabled':''}>‹</button>`;
+    if (s>1) h += `<button class="pg" onclick="goPage(1)">1</button>${s>2?'<span style="color:#444">…</span>':''}`;
+    for (let i=s;i<=e;i++)
+        h += `<button class="pg${i===page?' on':''}" onclick="goPage(${i})">${i}</button>`;
+    if (e<total) h += `${e<total-1?'<span style="color:#444">…</span>':''}<button class="pg" onclick="goPage(${total})">${total}</button>`;
+    h += `<button class="pg" onclick="goPage(${page+1})" ${page===total?'disabled':''}>›</button>`;
+    h += `<span class="pg-info">Page ${page}/${total} · ${filtered.length} cases</span>`;
+    pag.innerHTML = h;
+}
+
+function goPage(p) {
+    const t = Math.ceil(filtered.length/PG);
+    if (p<1||p>t) return;
+    page=p; render();
+    window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ══════════════════════════════════════
+//  Utils
+// ══════════════════════════════════════
+function esc(s) {
+    return String(s||'')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function skeleton() {
+    document.getElementById('tbody').innerHTML =
+        Array(8).fill(0).map(()=>`<tr>
+            ${[110,80,160,350,60].map(w=>`<td><span class="sk" style="width:${Math.round(w*(.5+Math.random()*.5))}px"></span></td>`).join('')}
+        </tr>`).join('');
+}
+
+function noData(msg='No cases match the current filters.') {
+    document.getElementById('tbody').innerHTML =
+        `<tr><td colspan="5" class="no-data"><div class="ico">🔍</div><p>${msg}</p></td></tr>`;
+    document.getElementById('pag').style.display='none';
+}
+
+function showErr(msg) {
+    const b = document.getElementById('errBox');
+    b.style.display='block';
+    b.textContent='⚠️ ' + msg;
+}
+
+// Enter → 검색
+document.getElementById('fKeyword').addEventListener('keydown', e=>{
+    if(e.key==='Enter') applyFilter();
+});
+
+// 초기 정렬 표시
+document.getElementById('th-date').classList.add('desc');
+</script>
+</body>
+</html>
